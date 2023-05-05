@@ -7,15 +7,8 @@ import android.util.Log;
 import android.webkit.SslErrorHandler;
 import android.webkit.WebView;
 
-import org.apache.http.conn.ClientConnectionManager;
 import org.apache.http.conn.scheme.HostNameResolver;
-import org.apache.http.conn.scheme.PlainSocketFactory;
-import org.apache.http.conn.scheme.Scheme;
-import org.apache.http.conn.scheme.SchemeRegistry;
 import org.apache.http.conn.ssl.SSLSocketFactory;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.impl.conn.SingleClientConnManager;
-import org.apache.http.impl.conn.tsccm.ThreadSafeClientConnManager;
 import org.apache.http.params.HttpParams;
 
 import java.io.IOException;
@@ -66,47 +59,6 @@ public class Main implements IXposedHookLoadPackage {
         currentPackageName = lpparam.packageName;
 
 
-
-        /* Apache Hooks */
-        /* external/apache-http/src/org/apache/http/impl/client/DefaultHttpClient.java */
-        /* public DefaultHttpClient() */
-        if (hasDefaultHTTPClient()) {
-            Log.d(TAG, "Hooking DefaultHTTPClient for: " + currentPackageName);
-            findAndHookConstructor(DefaultHttpClient.class, new XC_MethodHook() {
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-
-                    setObjectField(param.thisObject, "defaultParams", null);
-                    setObjectField(param.thisObject, "connManager", getSCCM());
-                }
-            });
-
-            /* external/apache-http/src/org/apache/http/impl/client/DefaultHttpClient.java */
-            /* public DefaultHttpClient(HttpParams params) */
-            Log.d(TAG, "Hooking DefaultHTTPClient(HttpParams) for: " + currentPackageName);
-            findAndHookConstructor(DefaultHttpClient.class, HttpParams.class, new XC_MethodHook() {
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-
-                    setObjectField(param.thisObject, "defaultParams", (HttpParams) param.args[0]);
-                    setObjectField(param.thisObject, "connManager", getSCCM());
-                }
-            });
-
-            /* external/apache-http/src/org/apache/http/impl/client/DefaultHttpClient.java */
-            /* public DefaultHttpClient(ClientConnectionManager conman, HttpParams params) */
-            Log.d(TAG, "Hooking DefaultHTTPClient(ClientConnectionManager, HttpParams) for: " + currentPackageName);
-            findAndHookConstructor(DefaultHttpClient.class, ClientConnectionManager.class, HttpParams.class, new XC_MethodHook() {
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-
-                    HttpParams params = (HttpParams) param.args[1];
-
-                    setObjectField(param.thisObject, "defaultParams", params);
-                    setObjectField(param.thisObject, "connManager", getCCM(param.args[0], params));
-                }
-            });
-        }
 
         findAndHookMethod(X509TrustManagerExtensions.class, "checkServerTrusted", X509Certificate[].class, String.class, String.class, new XC_MethodReplacement() {
             @Override
@@ -352,69 +304,7 @@ public class Main implements IXposedHookLoadPackage {
         }
     }
 
-    //Create a SingleClientConnManager that trusts everyone!
-    public ClientConnectionManager getSCCM() {
 
-        KeyStore trustStore;
-        try {
-
-            trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
-            trustStore.load(null, null);
-
-            SSLSocketFactory sf = new TrustAllSSLSocketFactory(trustStore);
-            sf.setHostnameVerifier(SSLSocketFactory.ALLOW_ALL_HOSTNAME_VERIFIER);
-
-            SchemeRegistry registry = new SchemeRegistry();
-            registry.register(new Scheme("http", PlainSocketFactory.getSocketFactory(), 80));
-            registry.register(new Scheme("https", sf, 443));
-
-            ClientConnectionManager ccm = new SingleClientConnManager(null, registry);
-
-            return ccm;
-
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    //This function creates a ThreadSafeClientConnManager that trusts everyone!
-    public ClientConnectionManager getTSCCM(HttpParams params) {
-
-        KeyStore trustStore;
-        try {
-
-            trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
-            trustStore.load(null, null);
-
-            SSLSocketFactory sf = new TrustAllSSLSocketFactory(trustStore);
-            sf.setHostnameVerifier(SSLSocketFactory.ALLOW_ALL_HOSTNAME_VERIFIER);
-
-            SchemeRegistry registry = new SchemeRegistry();
-            registry.register(new Scheme("http", PlainSocketFactory.getSocketFactory(), 80));
-            registry.register(new Scheme("https", sf, 443));
-
-            ClientConnectionManager ccm = new ThreadSafeClientConnManager(params, registry);
-
-            return ccm;
-
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    //This function determines what object we are dealing with.
-    public ClientConnectionManager getCCM(Object o, HttpParams params) {
-
-        String className = o.getClass().getSimpleName();
-
-        if (className.equals("SingleClientConnManager")) {
-            return getSCCM();
-        } else if (className.equals("ThreadSafeClientConnManager")) {
-            return getTSCCM(params);
-        }
-
-        return null;
-    }
 
     private void processXutils(ClassLoader classLoader) {
         Log.d(TAG, "Hooking org.xutils.http.RequestParams.setSslSocketFactory(SSLSocketFactory) (3) for: " + currentPackageName);
